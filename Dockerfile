@@ -1,17 +1,14 @@
 # Use a minimal base image for Go
-FROM golang:1.20 AS builder
+FROM golang:1.23.0 AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the Go module files
-COPY go.mod go.sum ./
+# Clone the GitHub repository
+RUN git clone https://github.com/sagarsuperuser/sharded-counters.git .
 
-# Download the Go dependencies
-RUN go mod download
-
-# Copy the rest of the application code
-COPY . .
+# Fetch dependencies
+RUN go mod tidy
 
 # Build the application binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o sharded-counters ./cmd/sharded-counters
