@@ -94,9 +94,17 @@ func getShards() ([]string, error) {
 	// List pods in the headless service.
 	namespace := os.Getenv("SHARD_NAMESPACE") // Retrieve namespace from environment variable.
 	serviceName := os.Getenv("SHARD_SERVICE_NAME")
+
+	if namespace == "" || serviceName == "" {
+		return nil, fmt.Errorf("environment variables SHARD_NAMESPACE or SHARD_SERVICE_NAME are not set")
+	}
+
+	// Construct label selector based on the service's app label.
+	labelSelector := fmt.Sprintf("app=%s", serviceName)
+
 	podClient := clientset.CoreV1().Pods(namespace)
 	podList, err := podClient.List(context.TODO(), metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("app=%s", serviceName),
+		LabelSelector: labelSelector,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %v", err)
