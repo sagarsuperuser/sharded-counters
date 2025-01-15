@@ -1,14 +1,13 @@
 package metrics
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"sharded-counters/internal/etcd"
 	"time"
 
 	"github.com/shirou/gopsutil/cpu"
-	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type Metrics struct {
@@ -18,7 +17,7 @@ type Metrics struct {
 	UpdatedTime    string  `json:"updated_time"`
 }
 
-func fetchAndStoreMetrics(cli *clientv3.Client, shardID string) error {
+func fetchAndStoreMetrics(shardID string) error {
 	utilizations, err := cpu.Percent(0, false)
 	if err != nil {
 		return fmt.Errorf("error fetching CPU utilization: %w", err)
@@ -42,14 +41,7 @@ func fetchAndStoreMetrics(cli *clientv3.Client, shardID string) error {
 		return fmt.Errorf("error marshaling metrics: %w", err)
 	}
 
-	// Create a lease with a TTL of 6 seconds
-	leaseResp, err := cli.Grant(context.Background(), 6)
-	if err != nil {
-		return fmt.Errorf("error creating lease: %w", err)
-	}
-
-	// Put the key-value pair with the lease
-	_, err = cli.Put(context.Background(), key, string(value), clientv3.WithLease(leaseResp.ID))
+	err = etcd.SaveMetadataWithLease(key, string(value), 6)
 	if err != nil {
 		return fmt.Errorf("error storing metrics in etcd: %w", err)
 	}
@@ -58,14 +50,14 @@ func fetchAndStoreMetrics(cli *clientv3.Client, shardID string) error {
 	return nil
 }
 
-func StoreMetrics(cli *clientv3.Client, shardID string, interval time.Duration) {
+func StoreMetrics(shardID string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := fetchAndStoreMetrics(cli, shardID); err != nil {
+			if err := fetchAndStoreMetrics(shardID); err != nil {
 				log.Printf("Error during metrics storage: %v", err)
 			}
 		}

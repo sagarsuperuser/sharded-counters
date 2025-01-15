@@ -14,11 +14,11 @@ import (
 
 func main() {
 	// Initialize etcd client
-	cli, err := etcd.InitializeClient()
+	err := etcd.InitializeClient()
 	if err != nil {
 		log.Fatalf("Failed to initialize etcd client: %v", err)
 	}
-	defer cli.Close()
+	defer etcd.CloseEtcdClient()
 
 	// Get shard ID
 	shardID := os.Getenv("POD_IP")
@@ -27,10 +27,18 @@ func main() {
 	}
 
 	// Start storing metrics in etcd
-	go metrics.StoreMetrics(cli, shardID, 5*time.Second)
+	servType := os.Getenv("SERVICE_TYPE")
+	if servType == "" {
+		servType = "app"
+	}
 
+	if servType == "shard" {
+		go metrics.StoreMetrics(shardID, 5*time.Second)
+
+	}
 	// Setup health API
 	http.HandleFunc("/health", server.HealthHandler)
+	http.HandleFunc("/counter", server.CreateCounterHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {

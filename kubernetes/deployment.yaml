@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sharded-counter
+  name: sharded-counter-shards
   labels:
-    app: sharded-counter
+    app: sharded-counter-shards
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
-      app: sharded-counter
+      app: sharded-counter-shards
   template:
     metadata:
       labels:
-        app: sharded-counter
+        app: sharded-counter-shards
     spec:
       containers:
-        - name: sharded-counter
+        - name: sharded-counter-shards
           image: sagar10018233/sharded-counter:latest
           ports:
             - containerPort: 8080
@@ -28,6 +28,15 @@ spec:
                   fieldPath: status.podIP
             - name: PORT
               value: "8080"
+            - name: SHARD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SHARD_SERVICE_NAME
+              value: "shards-headless"
+
+            - name: SERVICE_TYPE
+              value: "shard"
           resources:
             limits:
               memory: "128Mi"
@@ -39,13 +48,84 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sharded-counter
+  name: shards-headless
+  labels:
+    app: sharded-counter-shards
 spec:
+  clusterIP: None
   selector:
-    app: sharded-counter
+    app: sharded-counter-shards
   ports:
-    - protocol: TCP
+    - name: http
       port: 8080
       targetPort: 8080
-  clusterIP: None
-  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sharded-counter-hpa
+  labels:
+    app: sharded-counter-shards
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sharded-counter-shards
+  minReplicas: 3
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sharded-counter-app
+  labels:
+    app: sharded-counter-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sharded-counter-app
+  template:
+    metadata:
+      labels:
+        app: sharded-counter-app
+    spec:
+      containers:
+        - name: sharded-counter-app
+          image: sagar10018233/sharded-counter:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ETCD_ENDPOINTS
+              value: "http://etcd-service.default.svc.cluster.local:2379"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: PORT
+              value: "8080"
+            - name: SHARD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SHARD_SERVICE_NAME
+              value: "shards-headless"
+
+            - name: SERVICE_TYPE
+              value: "app"
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
