@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"sharded-counters/internal/etcd"
-	"sharded-counters/internal/metrics"
 	"sharded-counters/internal/server"
+	shardmetadata "sharded-counters/internal/shard_metadata"
 )
 
 func main() {
@@ -33,12 +33,14 @@ func main() {
 	}
 
 	if servType == "shard" {
-		go metrics.StoreMetrics(shardID, 5*time.Second)
+		go shardmetadata.StoreMetrics(shardID, 5*time.Second)
 
 	}
 	// Setup health API
 	http.HandleFunc("/health", server.HealthHandler)
-	http.HandleFunc("/counter", server.CreateCounterHandler)
+	http.HandleFunc("/counter/test", server.CreateCounterHandler)
+
+	http.HandleFunc("/counter/increment", server.IncrementCounterHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
