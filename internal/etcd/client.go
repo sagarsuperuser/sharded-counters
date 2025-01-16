@@ -11,6 +11,9 @@ import (
 
 var client *clientv3.Client
 
+// ErrKeyNotFound is returned when the key does not exist in etcd.
+var ErrKeyNotFound = fmt.Errorf("key not found")
+
 // InitializeClient initializes a connection to etcd
 func InitializeClient() error {
 	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
@@ -55,4 +58,33 @@ func SaveMetadataWithLease(key string, value string, duration int64) error {
 	_, err = client.Put(context.Background(), key, string(value), clientv3.WithLease(leaseResp.ID))
 
 	return err
+}
+
+// GetKeysWithPrefix fetches all keys from etcd with the specified prefix.
+func GetKeysWithPrefix(prefix string) ([]string, error) {
+	resp, err := client.Get(context.Background(), prefix, clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+
+	var keys []string
+	for _, kv := range resp.Kvs {
+		keys = append(keys, string(kv.Key))
+	}
+
+	return keys, nil
+}
+
+// GetKey fetches key value from etcd.
+func GetKey(key string) (string, error) {
+	resp, err := client.Get(context.Background(), key)
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Kvs) == 0 {
+		return "", ErrKeyNotFound // Return a specific error for "key not found"
+	}
+
+	return string(resp.Kvs[0].Value), nil
 }

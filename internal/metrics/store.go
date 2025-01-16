@@ -35,7 +35,7 @@ func fetchAndStoreMetrics(shardID string) error {
 		UpdatedTime:    time.Now().Format(time.RFC3339),
 	}
 
-	key := fmt.Sprintf("metrics/%s", shardID) // Overwrite previous value for the shard
+	key := fmt.Sprintf("shards/%s", shardID) // Overwrite previous value for the shard
 	value, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("error marshaling metrics: %w", err)
