@@ -11,6 +11,7 @@ import (
 
 // const shardIncrApi = "counter/shard/increment"
 const shardIncrApi = "health"
+const shardPort = "8080"
 
 // LoadBalancer manages shard selection based on specific strategies.
 type LoadBalancer struct {
@@ -68,7 +69,7 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 
 func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, payload []byte) error {
 	// Construct the URL for the shard's API endpoint.
-	shardURL := fmt.Sprintf("http://%s/%s", shard.ShardID, shardIncrApi)
+	shardURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, shardIncrApi)
 
 	// Send the request to the shard.
 	resp, err := http.Post(shardURL, "application/json", strings.NewReader(string(payload)))
