@@ -77,7 +77,7 @@ func GetShards() ([]*Shard, error) {
 	for _, shard := range values {
 
 		// Parse the shard metadata.
-		var shardMetadata *Shard
+		shardMetadata := &Shard{}
 		err = json.Unmarshal([]byte(shard), shardMetadata)
 		if err != nil {
 			log.Printf("Error unmarshaling shard metadata for %s: %v", shard, err)
