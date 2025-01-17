@@ -71,7 +71,7 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 	// Forward the request to the selected shard.
 	err = lb.forwardRequestToShard(selectedShard, payload)
 	if err != nil {
-		return fmt.Errorf("failed to forward request to shard: %v", err)
+		return err
 	}
 
 	log.Printf("Request forwarded to shard %s with payload %s", selectedShard.ShardID, payload)
@@ -85,7 +85,7 @@ func (lb *LoadBalancer) filterHealthyShards() error {
 		// fetch shard metrics from etcd
 		shardMetrics, err := shardmetadata.GetShardMetrics(shardData.ShardID)
 		if err != nil {
-			log.Println("error fetching shard metrics from etcd: %w", err)
+			log.Printf("error fetching shard metrics from etcd: %v", err)
 			continue
 		}
 		// Check if the shard is healthy.

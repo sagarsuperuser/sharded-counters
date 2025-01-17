@@ -68,12 +68,14 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Stored counter metadata in etcd: %s = %s", counterID, assignedShards)
+	shardIds := countermetadata.GetShardIds(assignedShards)
+
+	log.Printf("Stored counter metadata in etcd: %s = %s", counterID, shardIds)
 
 	// Respond with the assigned shards.
 	resp := CounterResponse{
 		CounterID: counterID,
-		Shards:    assignedShards,
+		Shards:    shardIds,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -99,7 +101,6 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	counterShards, metadataErr := countermetadata.GetCounterMetadata(req.CounterID)
 	// Handle the "key not found" case
 	if metadataErr == etcd.ErrKeyNotFound {
-
 		// Retrieve all available shards (pods) from Etcd.
 		allAliveShards, err := shardmetadata.GetAliveShards()
 		if err != nil {
@@ -108,15 +109,15 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Assign shards to the counter (randomly).
-		shardIds := assignShards(allAliveShards)
+		counterShards = assignShards(allAliveShards)
 
 		// Save metadata to Etcd.
-		err = countermetadata.SaveCounterMetadata(req.CounterID, shardIds)
+		err = countermetadata.SaveCounterMetadata(req.CounterID, counterShards)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to save metadata: %v", err), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, shardIds)
+		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, countermetadata.GetShardIds(counterShards))
 
 	}
 
@@ -142,11 +143,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // assignShards randomly selects shards for a counter.
-func assignShards(shards []*shardmetadata.Shard) []string {
+func assignShards(shards []*shardmetadata.Shard) []*shardmetadata.Shard {
 	// For simplicity, assign all shards (or select a random subset if needed).
-	var shardIds []string
-	for _, shard := range shards {
-		shardIds = append(shardIds, shard.ShardID)
-	}
-	return shardIds
+	return shards
 }

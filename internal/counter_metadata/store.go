@@ -10,8 +10,9 @@ import (
 const counterPrefix = "counters/" // Prefix used to identify counter keys in etcd
 
 // saveCounterMetadata saves counter metadata in Etcd.
-func SaveCounterMetadata(counterID string, shards []string) error {
-	data, err := json.Marshal(shards)
+func SaveCounterMetadata(counterID string, shards []*shardmetadata.Shard) error {
+	shardIds := GetShardIds(shards)
+	data, err := json.Marshal(shardIds)
 	if err != nil {
 		return fmt.Errorf("failed to marshal shards: %v", err)
 	}
@@ -46,5 +47,14 @@ func GetCounterMetadata(counterID string) ([]*shardmetadata.Shard, error) {
 	}
 
 	return shardsList, nil
+
+}
+
+func GetShardIds(shards []*shardmetadata.Shard) []string {
+	var shardsIds []string
+	for _, shardMeta := range shards {
+		shardsIds = append(shardsIds, shardMeta.ShardID)
+	}
+	return shardsIds
 
 }
