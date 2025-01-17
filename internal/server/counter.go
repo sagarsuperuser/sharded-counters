@@ -100,7 +100,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve assigned shards (pods) for counter
 	counterShards, metadataErr := countermetadata.GetCounterMetadata(req.CounterID)
 	// Handle the "key not found" case
-	if metadataErr == etcd.ErrKeyNotFound {
+	if etcd.IsKeyNotFound(metadataErr) {
 		// Retrieve all available shards (pods) from Etcd.
 		allAliveShards, err := shardmetadata.GetAliveShards()
 		if err != nil {
@@ -125,10 +125,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Filter healthy shards stored in etcd with key shards/<shard-id> - Done
 	// Select a shard based on least cpu utilization metric, and forward the request with req.CounterID to selected shard (using api call)
 	strategy := &loadbalancer.MetricsStrategy{}
-	loadbalancer.InitializeLoadBalancer(counterShards, strategy)
-	// Get the LoadBalancer instance.
-	lb := loadbalancer.GetInstance()
-
+	lb := loadbalancer.NewLoadBalancer(counterShards, strategy)
 	// Marshal the request payload.
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -138,7 +135,6 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed forwading request through loadbalancer: %v", err), http.StatusInternalServerError)
 	}
-
 	w.WriteHeader(http.StatusOK)
 }
 

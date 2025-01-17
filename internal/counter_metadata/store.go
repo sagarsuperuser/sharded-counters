@@ -7,7 +7,7 @@ import (
 	shardmetadata "sharded-counters/internal/shard_metadata"
 )
 
-const counterPrefix = "counters/" // Prefix used to identify counter keys in etcd
+const counterPrefix = "counters" // Prefix used to identify counter keys in etcd
 
 // saveCounterMetadata saves counter metadata in Etcd.
 func SaveCounterMetadata(counterID string, shards []*shardmetadata.Shard) error {

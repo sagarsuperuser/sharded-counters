@@ -2,29 +2,48 @@ package etcd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var client *clientv3.Client
+var (
+	client     *clientv3.Client
+	clientOnce sync.Once
+)
 
-// ErrKeyNotFound is returned when the key does not exist in etcd.
-var ErrKeyNotFound = fmt.Errorf("key not found")
+// KeyNotFoundError represents an error when a key is not found in etcd.
+type KeyNotFoundError struct {
+	Key string
+}
 
-// InitializeClient initializes a connection to etcd
+func (e *KeyNotFoundError) Error() string {
+	return fmt.Sprintf("key '%s' not found", e.Key)
+}
+
+// IsKeyNotFound checks if an error is of type KeyNotFoundError.
+func IsKeyNotFound(err error) bool {
+	var keyErr *KeyNotFoundError
+	return errors.As(err, &keyErr)
+}
+
+// InitializeClient initializes a connection to etcd using the singleton pattern.
 func InitializeClient() error {
-	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
-	if etcdEndpoints == "" {
-		etcdEndpoints = "localhost:2379"
-	}
-
 	var err error
-	client, err = clientv3.New(clientv3.Config{
-		Endpoints:   []string{etcdEndpoints},
-		DialTimeout: 5 * time.Second,
+	clientOnce.Do(func() {
+		etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
+		if etcdEndpoints == "" {
+			etcdEndpoints = "localhost:2379"
+		}
+
+		client, err = clientv3.New(clientv3.Config{
+			Endpoints:   []string{etcdEndpoints},
+			DialTimeout: 5 * time.Second,
+		})
 	})
 	return err
 }
@@ -36,7 +55,7 @@ func CloseEtcdClient() {
 	}
 }
 
-// GetClient returns the Etcd client instance.
+// GetClient returns the singleton Etcd client instance.
 func GetClient() *clientv3.Client {
 	return client
 }
@@ -60,7 +79,7 @@ func SaveMetadataWithLease(key string, value string, duration int64) error {
 	return err
 }
 
-// GetWithPrefix fetches all keeys from etcd with the specified prefix.
+// GetWithPrefix fetches all keys from etcd with the specified prefix.
 func GetKeysWithPrefix(prefix string) ([]string, error) {
 	resp, err := client.Get(context.Background(), prefix, clientv3.WithPrefix())
 	if err != nil {
@@ -75,7 +94,7 @@ func GetKeysWithPrefix(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// GetKey fetches key value from etcd.
+// Get fetches a key's value from etcd.
 func Get(key string) (string, error) {
 	resp, err := client.Get(context.Background(), key)
 	if err != nil {
@@ -83,7 +102,7 @@ func Get(key string) (string, error) {
 	}
 
 	if len(resp.Kvs) == 0 {
-		return "", ErrKeyNotFound // Return a specific error for "key not found"
+		return "", &KeyNotFoundError{Key: key} // Return a specific error for "key not found"
 	}
 
 	return string(resp.Kvs[0].Value), nil

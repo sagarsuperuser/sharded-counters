@@ -74,7 +74,6 @@ func GetAliveShards() ([]*Shard, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error fetching shard keys from etcd: %w", err)
 	}
-	fmt.Println(keys)
 	var healthyShards []*Shard
 	prefix := fmt.Sprintf("%s/", shardPrefix)
 	for _, shardKey := range keys {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 	"strings"
-	"sync"
 )
 
 // const shardIncrApi = "counter/shard/increment"
@@ -19,34 +18,17 @@ type LoadBalancer struct {
 	selectionStrategy SelectionStrategy
 }
 
-var (
-	instance *LoadBalancer
-	once     sync.Once
-)
-
 // SelectionStrategy defines the interface for shard selection strategies.
 type SelectionStrategy interface {
 	SelectShard(shards []*shardmetadata.Shard) (*shardmetadata.Shard, error)
 }
 
-// InitializeLoadBalancer initializes the singleton LoadBalancer instance with the provided shards and strategy.
-// It must be called before GetInstance.
-func InitializeLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy) {
-	once.Do(func() {
-		instance = &LoadBalancer{
-			shards:            shards,
-			selectionStrategy: strategy,
-		}
-	})
-}
-
-// GetInstance returns the singleton instance of LoadBalancer.
-// Ensure InitializeLoadBalancer is called first.
-func GetInstance() *LoadBalancer {
-	if instance == nil {
-		log.Fatalf("LoadBalancer instance is not initialized. Call InitializeLoadBalancer first.")
+// NewLoadBalancer creates and initializes a new LoadBalancer instance.
+func NewLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy) *LoadBalancer {
+	return &LoadBalancer{
+		shards:            shards,
+		selectionStrategy: strategy,
 	}
-	return instance
 }
 
 func (lb *LoadBalancer) SetShards(shards []*shardmetadata.Shard) error {
@@ -54,16 +36,15 @@ func (lb *LoadBalancer) SetShards(shards []*shardmetadata.Shard) error {
 	return nil
 }
 
-func (lb *LoadBalancer) GetLbShards() []*shardmetadata.Shard {
+func (lb *LoadBalancer) GetShards() []*shardmetadata.Shard {
 	return lb.shards
 }
 
 func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
-
-	//Filter out healthy shards and set new shards, key => shards/<shard-id>
+	// Filter out healthy shards and set new shards, key => shards/<shard-id>
 	lb.filterHealthyShards()
-	// Select the shard based on selection stratedy
-	selectedShard, err := lb.selectionStrategy.SelectShard(lb.shards)
+	// Select the shard based on selection strategy
+	selectedShard, err := lb.selectionStrategy.SelectShard(lb.GetShards())
 	if err != nil {
 		return fmt.Errorf("failed to select a shard: %v", err)
 	}
@@ -76,18 +57,18 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 
 	log.Printf("Request forwarded to shard %s with payload %s", selectedShard.ShardID, payload)
 	return nil
-
 }
 
 func (lb *LoadBalancer) filterHealthyShards() error {
 	var healthyShards []*shardmetadata.Shard
-	for _, shardData := range lb.shards {
+	for _, shardData := range lb.GetShards() {
 		// fetch shard metrics from etcd
 		shardMetrics, err := shardmetadata.GetShardMetrics(shardData.ShardID)
 		if err != nil {
 			log.Printf("error fetching shard metrics from etcd: %v", err)
 			continue
 		}
+
 		// Check if the shard is healthy.
 		if shardMetrics.Health == "ok" {
 			healthyShards = append(healthyShards, shardMetrics)
