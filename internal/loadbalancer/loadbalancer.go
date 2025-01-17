@@ -49,7 +49,19 @@ func GetInstance() *LoadBalancer {
 	return instance
 }
 
+func (lb *LoadBalancer) SetShards(shards []*shardmetadata.Shard) error {
+	lb.shards = shards
+	return nil
+}
+
+func (lb *LoadBalancer) GetLbShards() []*shardmetadata.Shard {
+	return lb.shards
+}
+
 func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
+
+	//Filter out healthy shards and set new shards, key => shards/<shard-id>
+	lb.filterHealthyShards()
 	// Select the shard based on selection stratedy
 	selectedShard, err := lb.selectionStrategy.SelectShard(lb.shards)
 	if err != nil {
@@ -65,6 +77,24 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 	log.Printf("Request forwarded to shard %s with payload %s", selectedShard.ShardID, payload)
 	return nil
 
+}
+
+func (lb *LoadBalancer) filterHealthyShards() error {
+	var healthyShards []*shardmetadata.Shard
+	for _, shardData := range lb.shards {
+		// fetch shard metrics from etcd
+		shardMetrics, err := shardmetadata.GetShardMetrics(shardData.ShardID)
+		if err != nil {
+			log.Println("error fetching shard metrics from etcd: %w", err)
+			continue
+		}
+		// Check if the shard is healthy.
+		if shardMetrics.Health == "ok" {
+			healthyShards = append(healthyShards, shardMetrics)
+		}
+	}
+	lb.SetShards(healthyShards)
+	return nil
 }
 
 func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, payload []byte) error {

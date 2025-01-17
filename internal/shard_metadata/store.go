@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sharded-counters/internal/etcd"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/cpu"
@@ -66,30 +67,44 @@ func StoreMetrics(shardID string, interval time.Duration) {
 	}
 }
 
-// GetShardsFromEtcd retrieves all shard values from etcd and returns them as list of shard object
-func GetShards() ([]*Shard, error) {
+// GetShardsFromEtcd retrieves all shard values from etcd and returns them as list of shard ids
+func GetAliveShards() ([]*Shard, error) {
 	// Retrieve key values with the specified prefix from etcd
-	values, err := etcd.GetWithPrefix(shardPrefix)
+	keys, err := etcd.GetKeysWithPrefix(shardPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching shard keys from etcd: %w", err)
 	}
 	var healthyShards []*Shard
-	for _, shard := range values {
+	prefix := fmt.Sprintf("%s/", shardPrefix)
+	for _, shardKey := range keys {
+		// shardKey => shards/<shard-id>
+		if strings.HasPrefix(shardKey, prefix) {
+			shardID := strings.TrimPrefix(shardKey, prefix)
+			shardData := new(Shard)
+			shardData.ShardID = shardID
+			healthyShards = append(healthyShards, shardData)
 
-		// Parse the shard metadata.
-		shardMetadata := &Shard{}
-		err = json.Unmarshal([]byte(shard), shardMetadata)
-		if err != nil {
-			log.Printf("Error unmarshaling shard metadata for %s: %v", shard, err)
-			continue
-		}
-		// Check if the shard is healthy.
-		if shardMetadata.Health == "ok" {
-			healthyShards = append(healthyShards, shardMetadata)
 		}
 	}
 
 	return healthyShards, nil
+}
+
+func GetShardMetrics(shardID string) (*Shard, error) {
+	// Construct the key for the shard in etcd.
+	key := fmt.Sprintf("%s/%s", shardPrefix, shardID)
+	// Retrieve shard metadata from etcd.
+	value, err := etcd.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	// Parse the shard metadata.
+	shardMetadata := new(Shard)
+	err = json.Unmarshal([]byte(value), shardMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshaling shard metadata for %s: %v", shardID, err)
+	}
+	return shardMetadata, nil
 }
 
 // getShards retrieves available pod IPs using the headless service FQDN.

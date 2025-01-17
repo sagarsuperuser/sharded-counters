@@ -52,7 +52,7 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve available shards (pods) from Etcd.
-	shards, err := shardmetadata.GetShards()
+	shards, err := shardmetadata.GetAliveShards()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve shards: %v", err), http.StatusInternalServerError)
 		return
@@ -95,27 +95,28 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve all available shards (pods) from Etcd.
-	shards, err := shardmetadata.GetShards()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to fetch shards metadata: %v", err), http.StatusInternalServerError)
-		return
-	}
 	// Retrieve assigned shards (pods) for counter
 	counterShards, metadataErr := countermetadata.GetCounterMetadata(req.CounterID)
 	// Handle the "key not found" case
 	if metadataErr == etcd.ErrKeyNotFound {
 
+		// Retrieve all available shards (pods) from Etcd.
+		allAliveShards, err := shardmetadata.GetAliveShards()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to fetch shards metadata: %v", err), http.StatusInternalServerError)
+			return
+		}
+
 		// Assign shards to the counter (randomly).
-		counterShards = assignShards(shards)
+		shardIds := assignShards(allAliveShards)
 
 		// Save metadata to Etcd.
-		err = countermetadata.SaveCounterMetadata(req.CounterID, counterShards)
+		err = countermetadata.SaveCounterMetadata(req.CounterID, shardIds)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to save metadata: %v", err), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, counterShards)
+		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, shardIds)
 
 	}
 
@@ -123,7 +124,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Filter healthy shards stored in etcd with key shards/<shard-id> - Done
 	// Select a shard based on least cpu utilization metric, and forward the request with req.CounterID to selected shard (using api call)
 	strategy := &loadbalancer.MetricsStrategy{}
-	loadbalancer.InitializeLoadBalancer(shards, strategy)
+	loadbalancer.InitializeLoadBalancer(counterShards, strategy)
 	// Get the LoadBalancer instance.
 	lb := loadbalancer.GetInstance()
 
@@ -143,9 +144,9 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 // assignShards randomly selects shards for a counter.
 func assignShards(shards []*shardmetadata.Shard) []string {
 	// For simplicity, assign all shards (or select a random subset if needed).
-	var newShards []string
+	var shardIds []string
 	for _, shard := range shards {
-		newShards = append(newShards, shard.ShardID)
+		shardIds = append(shardIds, shard.ShardID)
 	}
-	return newShards
+	return shardIds
 }

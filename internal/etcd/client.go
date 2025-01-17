@@ -60,19 +60,19 @@ func SaveMetadataWithLease(key string, value string, duration int64) error {
 	return err
 }
 
-// GetKeysWithPrefix fetches all key values from etcd with the specified prefix.
-func GetWithPrefix(prefix string) ([]string, error) {
+// GetWithPrefix fetches all key values from etcd with the specified prefix.
+func GetKeysWithPrefix(prefix string) ([]string, error) {
 	resp, err := client.Get(context.Background(), prefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
 
-	var values []string
+	var keys []string
 	for _, kv := range resp.Kvs {
-		values = append(values, string(kv.Value))
+		keys = append(keys, string(kv.Key))
 	}
 
-	return values, nil
+	return keys, nil
 }
 
 // GetKey fetches key value from etcd.

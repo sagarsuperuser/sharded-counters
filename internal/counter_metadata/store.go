@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sharded-counters/internal/etcd"
+	shardmetadata "sharded-counters/internal/shard_metadata"
 )
 
 const counterPrefix = "counters/" // Prefix used to identify counter keys in etcd
@@ -23,7 +24,7 @@ func SaveCounterMetadata(counterID string, shards []string) error {
 }
 
 // getCounterMetadata retrieves counter metadata i.e. assigned shards from Etcd.
-func GetCounterMetadata(counterID string) ([]string, error) {
+func GetCounterMetadata(counterID string) ([]*shardmetadata.Shard, error) {
 	// Fetch the metadata from Etcd using the provided key
 	key := fmt.Sprintf("%s/%s", counterPrefix, counterID)
 	data, err := etcd.Get(key)
@@ -37,6 +38,13 @@ func GetCounterMetadata(counterID string) ([]string, error) {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
 	}
 
-	return shards, nil
+	var shardsList []*shardmetadata.Shard
+	for _, shardID := range shards {
+		shardData := new(shardmetadata.Shard)
+		shardData.ShardID = shardID
+		shardsList = append(shardsList, shardData)
+	}
+
+	return shardsList, nil
 
 }
