@@ -39,13 +39,7 @@ func GetCounterMetadata(counterID string) ([]*shardmetadata.Shard, error) {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
 	}
 
-	var shardsList []*shardmetadata.Shard
-	for _, shardID := range shards {
-		shardData := new(shardmetadata.Shard)
-		shardData.ShardID = shardID
-		shardsList = append(shardsList, shardData)
-	}
-
+	shardsList := GetShardObjList(shards)
 	return shardsList, nil
 
 }
@@ -57,4 +51,14 @@ func GetShardIds(shards []*shardmetadata.Shard) []string {
 	}
 	return shardsIds
 
+}
+
+func GetShardObjList(shardIds []string) []*shardmetadata.Shard {
+	var shardsList []*shardmetadata.Shard
+	for _, shardID := range shardIds {
+		shardData := new(shardmetadata.Shard)
+		shardData.ShardID = shardID
+		shardsList = append(shardsList, shardData)
+	}
+	return shardsList
 }

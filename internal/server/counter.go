@@ -2,12 +2,12 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	countermetadata "sharded-counters/internal/counter_metadata"
 	"sharded-counters/internal/etcd"
 	"sharded-counters/internal/loadbalancer"
+	"sharded-counters/internal/responsehandler"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 	"sharded-counters/internal/utils"
 )
@@ -32,29 +32,28 @@ type CounterResponse struct {
 func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body.
 	var req CounterRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
 		return
 	}
 
 	// Validate input.
 	if req.Name == "" {
-		http.Error(w, "Counter name is required", http.StatusBadRequest)
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter name is required", "Missing field: name")
 		return
 	}
 
 	// Generate a unique Counter ID.
 	counterID, err := utils.GenerateUniqueID()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate counter ID: %v", err), http.StatusInternalServerError)
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to generate counter ID", err.Error())
 		return
 	}
 
 	// Retrieve available shards (pods) from Etcd.
 	shards, err := shardmetadata.GetAliveShards()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to retrieve shards: %v", err), http.StatusInternalServerError)
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve shards", err.Error())
 		return
 	}
 
@@ -62,14 +61,12 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 	assignedShards := assignShards(shards)
 
 	// Save metadata to Etcd.
-	err = countermetadata.SaveCounterMetadata(counterID, assignedShards)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to save metadata: %v", err), http.StatusInternalServerError)
+	if err := countermetadata.SaveCounterMetadata(counterID, assignedShards); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to save metadata", err.Error())
 		return
 	}
 
 	shardIds := countermetadata.GetShardIds(assignedShards)
-
 	log.Printf("Stored counter metadata in etcd: %s = %s", counterID, shardIds)
 
 	// Respond with the assigned shards.
@@ -77,34 +74,31 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 		CounterID: counterID,
 		Shards:    shardIds,
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	responsehandler.SendSuccessResponse(w, "Counter created successfully", resp)
 }
 
 // IncrementCounterHandler handles the counter increment API.
 func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body.
 	var req IncrementCounterReq
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
 		return
 	}
 
 	// Validate input.
 	if req.CounterID == "" {
-		http.Error(w, "Counter id is required", http.StatusBadRequest)
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID is required", "Missing field: counter_id")
 		return
 	}
 
 	// Retrieve assigned shards (pods) for counter
 	counterShards, metadataErr := countermetadata.GetCounterMetadata(req.CounterID)
-	// Handle the "key not found" case
 	if etcd.IsKeyNotFound(metadataErr) {
 		// Retrieve all available shards (pods) from Etcd.
 		allAliveShards, err := shardmetadata.GetAliveShards()
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to fetch shards metadata: %v", err), http.StatusInternalServerError)
+			responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to fetch shards metadata", err.Error())
 			return
 		}
 
@@ -112,30 +106,31 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		counterShards = assignShards(allAliveShards)
 
 		// Save metadata to Etcd.
-		err = countermetadata.SaveCounterMetadata(req.CounterID, counterShards)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to save metadata: %v", err), http.StatusInternalServerError)
+		if err := countermetadata.SaveCounterMetadata(req.CounterID, counterShards); err != nil {
+			responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to save metadata", err.Error())
 			return
 		}
 		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, countermetadata.GetShardIds(counterShards))
-
 	}
 
-	// Load balancing logic ->
-	// Filter healthy shards stored in etcd with key shards/<shard-id> - Done
-	// Select a shard based on least cpu utilization metric, and forward the request with req.CounterID to selected shard (using api call)
+	// Load balancing logic
 	strategy := &loadbalancer.MetricsStrategy{}
 	lb := loadbalancer.NewLoadBalancer(counterShards, strategy)
+
 	// Marshal the request payload.
 	payload, err := json.Marshal(req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to marshal request payload: %v", err), http.StatusInternalServerError)
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to marshal request payload", err.Error())
+		return
 	}
-	err = lb.ForwardRequest(payload)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed forwading request through loadbalancer: %v", err), http.StatusInternalServerError)
+
+	// Forward the request to the selected shard.
+	if err := lb.ForwardRequest(payload); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to forward request through load balancer", err.Error())
+		return
 	}
-	w.WriteHeader(http.StatusOK)
+
+	responsehandler.SendSuccessResponse(w, "Counter incremented successfully", nil)
 }
 
 // assignShards randomly selects shards for a counter.

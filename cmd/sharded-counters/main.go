@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"sharded-counters/internal/etcd"
+	"sharded-counters/internal/requestlogger"
 	"sharded-counters/internal/server"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 )
@@ -37,10 +38,10 @@ func main() {
 
 	}
 	// Setup health API
-	http.HandleFunc("/health", server.HealthHandler)
-	http.HandleFunc("/counter/test", server.CreateCounterHandler)
-
-	http.HandleFunc("/counter/increment", server.IncrementCounterHandler)
+	// requestlogger.Middleware(http.HandlerFunc(server.IncrementCounterHandler))
+	http.Handle("/health", requestlogger.Middleware(http.HandlerFunc(server.HealthHandler)))
+	http.Handle("/counter/test", requestlogger.Middleware(http.HandlerFunc(server.CreateCounterHandler)))
+	http.Handle("/counter/increment", requestlogger.Middleware(http.HandlerFunc(server.IncrementCounterHandler)))
 
 	port := os.Getenv("PORT")
 	if port == "" {
