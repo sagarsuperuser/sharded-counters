@@ -44,7 +44,7 @@ func fetchAndStoreMetrics(manager *etcd.EtcdManager, shardID string) error {
 		return fmt.Errorf("error marshaling metrics: %w", err)
 	}
 
-	err = manager.SaveMetadataWithLease(key, string(value), 6)
+	err = manager.SaveMetadataWithLease(key, string(value), 6*time.Second)
 	if err != nil {
 		return fmt.Errorf("error storing metrics in etcd: %w", err)
 	}

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
+	"sharded-counters/internal/utils"
 	"strings"
 )
 
-// const shardIncrApi = "counter/shard/increment"
-const shardIncrApi = "health"
+const shardIncrApi = "counter/shard/increment"
 const shardPort = "8080"
 
 // LoadBalancer manages shard selection based on specific strategies.
@@ -57,8 +57,6 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Request forwarded to shard %s with payload %s", selectedShard.ShardID, payload)
 	return nil
 }
 
@@ -85,12 +83,23 @@ func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, payloa
 	// Construct the URL for the shard's API endpoint.
 	shardURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, shardIncrApi)
 
-	// Send the request to the shard.
-	resp, err := http.Post(shardURL, "application/json", strings.NewReader(string(payload)))
+	// Send the request to the shard using PUT method.
+	req, err := http.NewRequest(http.MethodPut, shardURL, strings.NewReader(string(payload)))
+	if err != nil {
+		return fmt.Errorf("failed to create request for shard: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute the request.
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to forward request to shard: %v", err)
 	}
 	defer resp.Body.Close()
+
+	log.Printf("Request forwarded to shard %s with payload %s", shard.ShardID, payload)
+	utils.LogResponse(resp)
 
 	// Check for non-2xx status codes.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
