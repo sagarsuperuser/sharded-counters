@@ -20,7 +20,7 @@ type Shard struct {
 	UpdatedTime    string  `json:"updated_time"`
 }
 
-func fetchAndStoreMetrics(shardID string) error {
+func fetchAndStoreMetrics(manager *etcd.EtcdManager, shardID string) error {
 	utilizations, err := cpu.Percent(0, false)
 	if err != nil {
 		return fmt.Errorf("error fetching CPU utilization: %w", err)
@@ -44,7 +44,7 @@ func fetchAndStoreMetrics(shardID string) error {
 		return fmt.Errorf("error marshaling metrics: %w", err)
 	}
 
-	err = etcd.SaveMetadataWithLease(key, string(value), 6)
+	err = manager.SaveMetadataWithLease(key, string(value), 6)
 	if err != nil {
 		return fmt.Errorf("error storing metrics in etcd: %w", err)
 	}
@@ -53,24 +53,24 @@ func fetchAndStoreMetrics(shardID string) error {
 	return nil
 }
 
-func StoreMetrics(shardID string, interval time.Duration) {
+func StoreMetrics(manager *etcd.EtcdManager, shardID string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := fetchAndStoreMetrics(shardID); err != nil {
+			if err := fetchAndStoreMetrics(manager, shardID); err != nil {
 				log.Printf("Error during metrics storage: %v", err)
 			}
 		}
 	}
 }
 
-// GetShardsFromEtcd retrieves all shard values from etcd and returns them as list of shard ids
-func GetAliveShards() ([]*Shard, error) {
+// GetAliveShards retrieves all shard keys from etcd and returns list of shard objects.
+func GetAliveShards(manager *etcd.EtcdManager) ([]*Shard, error) {
 	// Retrieve key values with the specified prefix from etcd
-	keys, err := etcd.GetKeysWithPrefix(shardPrefix)
+	keys, err := manager.GetKeysWithPrefix(shardPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching shard keys from etcd: %w", err)
 	}
@@ -90,11 +90,11 @@ func GetAliveShards() ([]*Shard, error) {
 	return healthyShards, nil
 }
 
-func GetShardMetrics(shardID string) (*Shard, error) {
+func GetShardMetrics(manager *etcd.EtcdManager, shardID string) (*Shard, error) {
 	// Construct the key for the shard in etcd.
 	key := fmt.Sprintf("%s/%s", shardPrefix, shardID)
 	// Retrieve shard metadata from etcd.
-	value, err := etcd.Get(key)
+	value, err := manager.Get(key)
 	if err != nil {
 		return nil, err
 	}

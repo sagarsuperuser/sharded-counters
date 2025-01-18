@@ -10,14 +10,14 @@ import (
 const counterPrefix = "counters" // Prefix used to identify counter keys in etcd
 
 // saveCounterMetadata saves counter metadata in Etcd.
-func SaveCounterMetadata(counterID string, shards []*shardmetadata.Shard) error {
+func SaveCounterMetadata(manager *etcd.EtcdManager, counterID string, shards []*shardmetadata.Shard) error {
 	shardIds := GetShardIds(shards)
 	data, err := json.Marshal(shardIds)
 	if err != nil {
 		return fmt.Errorf("failed to marshal shards: %v", err)
 	}
 	key := fmt.Sprintf("%s/%s", counterPrefix, counterID)
-	err = etcd.SaveMetadata(key, string(data))
+	err = manager.SaveMetadata(key, string(data))
 	if err != nil {
 		return fmt.Errorf("failed to store metadata in etcd: %v", err)
 	}
@@ -25,10 +25,10 @@ func SaveCounterMetadata(counterID string, shards []*shardmetadata.Shard) error 
 }
 
 // getCounterMetadata retrieves counter metadata i.e. assigned shards from Etcd.
-func GetCounterMetadata(counterID string) ([]*shardmetadata.Shard, error) {
+func GetCounterMetadata(manager *etcd.EtcdManager, counterID string) ([]*shardmetadata.Shard, error) {
 	// Fetch the metadata from Etcd using the provided key
 	key := fmt.Sprintf("%s/%s", counterPrefix, counterID)
-	data, err := etcd.Get(key)
+	data, err := manager.Get(key)
 	if err != nil {
 		return nil, err
 	}

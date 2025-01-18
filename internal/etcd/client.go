@@ -4,17 +4,39 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var (
-	client     *clientv3.Client
-	clientOnce sync.Once
-)
+// EtcdManager manages interactions with the Etcd client.
+type EtcdManager struct {
+	client *clientv3.Client
+}
+
+// NewEtcdManager initializes and returns a new EtcdManager instance.
+func NewEtcdManager(endpoints []string, dialTimeout time.Duration) (*EtcdManager, error) {
+	if len(endpoints) == 0 {
+		return nil, fmt.Errorf("no etcd endpoints provided")
+	}
+
+	client, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: dialTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create etcd client: %w", err)
+	}
+
+	return &EtcdManager{client: client}, nil
+}
+
+// Close closes the Etcd client.
+func (e *EtcdManager) Close() {
+	if e.client != nil {
+		e.client.Close()
+	}
+}
 
 // KeyNotFoundError represents an error when a key is not found in etcd.
 type KeyNotFoundError struct {
@@ -31,57 +53,47 @@ func IsKeyNotFound(err error) bool {
 	return errors.As(err, &keyErr)
 }
 
-// InitializeClient initializes a connection to etcd using the singleton pattern.
-func InitializeClient() error {
-	var err error
-	clientOnce.Do(func() {
-		etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
-		if etcdEndpoints == "" {
-			etcdEndpoints = "localhost:2379"
-		}
-
-		client, err = clientv3.New(clientv3.Config{
-			Endpoints:   []string{etcdEndpoints},
-			DialTimeout: 5 * time.Second,
-		})
-	})
-	return err
-}
-
-// CloseEtcdClient closes the Etcd client.
-func CloseEtcdClient() {
-	if client != nil {
-		client.Close()
+// SaveMetadata saves a key-value pair in Etcd.
+func (e *EtcdManager) SaveMetadata(key, value string) error {
+	if e.client == nil {
+		return fmt.Errorf("etcd client is not initialized")
 	}
-}
 
-// GetClient returns the singleton Etcd client instance.
-func GetClient() *clientv3.Client {
-	return client
-}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-// SaveCounterMetadata saves metadata in Etcd.
-func SaveMetadata(key string, value string) error {
-	_, err := client.Put(context.Background(), key, value)
+	_, err := e.client.Put(ctx, key, value)
 	return err
 }
 
-func SaveMetadataWithLease(key string, value string, duration int64) error {
-	// Create a lease with a TTL of 6 seconds
-	leaseResp, err := client.Grant(context.Background(), 6)
+// SaveMetadataWithLease saves a key-value pair in Etcd with a TTL.
+func (e *EtcdManager) SaveMetadataWithLease(key, value string, ttl time.Duration) error {
+	if e.client == nil {
+		return fmt.Errorf("etcd client is not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	leaseResp, err := e.client.Grant(ctx, int64(ttl.Seconds()))
 	if err != nil {
 		return fmt.Errorf("error creating lease: %w", err)
 	}
 
-	// Put the key-value pair with the lease
-	_, err = client.Put(context.Background(), key, string(value), clientv3.WithLease(leaseResp.ID))
-
+	_, err = e.client.Put(ctx, key, value, clientv3.WithLease(leaseResp.ID))
 	return err
 }
 
-// GetWithPrefix fetches all keys from etcd with the specified prefix.
-func GetKeysWithPrefix(prefix string) ([]string, error) {
-	resp, err := client.Get(context.Background(), prefix, clientv3.WithPrefix())
+// GetKeysWithPrefix retrieves all keys matching a prefix from Etcd.
+func (e *EtcdManager) GetKeysWithPrefix(prefix string) ([]string, error) {
+	if e.client == nil {
+		return nil, fmt.Errorf("etcd client is not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := e.client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +106,16 @@ func GetKeysWithPrefix(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// Get fetches a key's value from etcd.
-func Get(key string) (string, error) {
-	resp, err := client.Get(context.Background(), key)
+// Get retrieves the value for a key from Etcd.
+func (e *EtcdManager) Get(key string) (string, error) {
+	if e.client == nil {
+		return "", fmt.Errorf("etcd client is not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := e.client.Get(ctx, key)
 	if err != nil {
 		return "", err
 	}

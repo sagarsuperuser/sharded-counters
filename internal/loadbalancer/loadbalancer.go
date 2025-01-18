@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 	"strings"
 )
@@ -16,6 +17,7 @@ const shardPort = "8080"
 type LoadBalancer struct {
 	shards            []*shardmetadata.Shard
 	selectionStrategy SelectionStrategy
+	etcdClient        *etcd.EtcdManager
 }
 
 // SelectionStrategy defines the interface for shard selection strategies.
@@ -24,10 +26,11 @@ type SelectionStrategy interface {
 }
 
 // NewLoadBalancer creates and initializes a new LoadBalancer instance.
-func NewLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy) *LoadBalancer {
+func NewLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy, eClient *etcd.EtcdManager) *LoadBalancer {
 	return &LoadBalancer{
 		shards:            shards,
 		selectionStrategy: strategy,
+		etcdClient:        eClient,
 	}
 }
 
@@ -63,7 +66,7 @@ func (lb *LoadBalancer) filterHealthyShards() error {
 	var healthyShards []*shardmetadata.Shard
 	for _, shardData := range lb.GetShards() {
 		// fetch shard metrics from etcd
-		shardMetrics, err := shardmetadata.GetShardMetrics(shardData.ShardID)
+		shardMetrics, err := shardmetadata.GetShardMetrics(lb.etcdClient, shardData.ShardID)
 		if err != nil {
 			log.Printf("error fetching shard metrics from etcd: %v", err)
 			continue
