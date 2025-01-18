@@ -5,13 +5,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
-
 	"sharded-counters/internal/etcd"
 	"sharded-counters/internal/middleware"
 	"sharded-counters/internal/server"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 	counter "sharded-counters/internal/shard_store"
+	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
@@ -67,10 +68,14 @@ func main() {
 }
 
 func startAPI(deps *middleware.Dependencies) {
-	// Setup health API
-	http.Handle("/health", middleware.Middleware(deps, http.HandlerFunc(server.HealthHandler)))
-	http.Handle("/counter/test", middleware.Middleware(deps, http.HandlerFunc(server.CreateCounterHandler)))
-	http.Handle("/counter/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementCounterHandler)))
-	http.Handle("/counter/shard/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementShardCounterHandler)))
+	r := mux.NewRouter()
 
+	// Define routes and enforce HTTP methods.
+	r.HandleFunc("/health", server.HealthHandler).Methods(http.MethodGet)
+	r.HandleFunc("/counter/test", server.CreateCounterHandler).Methods(http.MethodPost)
+	r.HandleFunc("/counter/increment", server.IncrementCounterHandler).Methods(http.MethodPut)
+	r.HandleFunc("/counter/shard/increment", server.IncrementShardCounterHandler).Methods(http.MethodPut)
+
+	// Wrap the router with the middleware.
+	http.Handle("/", middleware.Middleware(deps, r))
 }

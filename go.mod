@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.23.4
 
 require (
+	github.com/gorilla/mux v1.8.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	go.etcd.io/etcd/client/v3 v3.5.9
 )
