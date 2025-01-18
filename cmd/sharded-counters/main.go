@@ -71,11 +71,11 @@ func startAPI(deps *middleware.Dependencies) {
 	r := mux.NewRouter()
 
 	// Define routes and enforce HTTP methods.
-	r.HandleFunc("/health", server.HealthHandler).Methods(http.MethodGet)
-	r.HandleFunc("/counter/test", server.CreateCounterHandler).Methods(http.MethodPost)
-	r.HandleFunc("/counter/increment", server.IncrementCounterHandler).Methods(http.MethodPut)
-	r.HandleFunc("/counter/shard/increment", server.IncrementShardCounterHandler).Methods(http.MethodPut)
+	r.Handle("/health", middleware.Middleware(deps, http.HandlerFunc(server.HealthHandler))).Methods(http.MethodGet)
+	r.Handle("/counter/test", middleware.Middleware(deps, http.HandlerFunc(server.CreateCounterHandler))).Methods(http.MethodPost)
+	r.Handle("/counter/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementCounterHandler))).Methods(http.MethodPut)
+	r.Handle("/counter/shard/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementShardCounterHandler))).Methods(http.MethodPut)
 
 	// Wrap the router with the middleware.
-	http.Handle("/", middleware.Middleware(deps, r))
+	http.Handle("/", r)
 }
