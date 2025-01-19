@@ -10,7 +10,6 @@ import (
 	"strings"
 )
 
-const shardIncrApi = "counter/shard/increment"
 const shardPort = "8080"
 
 // LoadBalancer manages shard selection based on specific strategies.
@@ -43,7 +42,7 @@ func (lb *LoadBalancer) GetShards() []*shardmetadata.Shard {
 	return lb.shards
 }
 
-func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
+func (lb *LoadBalancer) ForwardRequest(urlPath string, payload []byte) error {
 	// Filter out healthy shards and set new shards, key => shards/<shard-id>
 	lb.filterHealthyShards()
 	// Select the shard based on selection strategy
@@ -53,7 +52,7 @@ func (lb *LoadBalancer) ForwardRequest(payload []byte) error {
 	}
 
 	// Forward the request to the selected shard.
-	err = lb.forwardRequestToShard(selectedShard, payload)
+	err = lb.forwardRequestToShard(selectedShard, urlPath, payload)
 	if err != nil {
 		return err
 	}
@@ -79,9 +78,9 @@ func (lb *LoadBalancer) filterHealthyShards() error {
 	return nil
 }
 
-func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, payload []byte) error {
+func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, urlPath string, payload []byte) error {
 	// Construct the URL for the shard's API endpoint.
-	shardURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, shardIncrApi)
+	shardURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, urlPath)
 
 	// Send the request to the shard using PUT method.
 	req, err := http.NewRequest(http.MethodPut, shardURL, strings.NewReader(string(payload)))

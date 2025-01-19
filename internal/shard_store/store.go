@@ -1,7 +1,6 @@
 package counter
 
 import (
-	"errors"
 	"sync"
 )
 
@@ -46,22 +45,19 @@ func (cm *CounterManager) Increment(counterID string) int64 {
 }
 
 // Decrement decrements the counter for the given ID with a granular lock.
-func (cm *CounterManager) Decrement(counterID string) (int64, error) {
-	// Check if the counter exists.
-	counter, ok := cm.counters.Load(counterID)
-	if !ok {
-		return 0, errors.New("counter does not exist")
-	}
+func (cm *CounterManager) Decrement(counterID string) int64 {
+	// Load or create the counter.
+	counter, _ := cm.counters.LoadOrStore(counterID, &Counter{})
 
 	// Cast to the Counter type.
 	c := counter.(*Counter)
 
-	// Lock the specific counter and decrement.
+	// Lock the specific counter and increment.
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
 	c.Value--
-	return c.Value, nil
+	return c.Value
 }
 
 // Get retrieves the current value of a counter.

@@ -34,6 +34,9 @@ type ShardCounterResponse struct {
 	NewValue  int64  `json:"new_value"`
 }
 
+const shardIncrementUrl = "counter/shard/increment"
+const shardDecrementUrl = "counter/shard/decrement"
+
 // CreateCounterHandler handles the counter creation API.
 func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve dependencies from context.
@@ -147,14 +150,63 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to marshal request payload", err.Error())
 		return
 	}
-
 	// Forward the request to the selected shard.
-	if err := lb.ForwardRequest(payload); err != nil {
+	if err := lb.ForwardRequest(shardIncrementUrl, payload); err != nil {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to forward request through load balancer", err.Error())
 		return
 	}
 
 	responsehandler.SendSuccessResponse(w, "Counter incremented successfully", nil)
+}
+
+func DecrementCounterHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve dependencies from context.
+	deps, err := middleware.GetDependenciesFromContext(r.Context())
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve dependencies", err.Error())
+		return
+	}
+
+	etcdManager := deps.EtcdManager
+
+	// Parse the request body.
+	var req IncrementCounterReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	// Validate input.
+	if req.CounterID == "" {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID is required", "Missing field: counter_id")
+		return
+	}
+
+	// Retrieve assigned shards (pods) for counter
+	counterShards, metadataErr := countermetadata.GetCounterMetadata(etcdManager, req.CounterID)
+	if etcd.IsKeyNotFound(metadataErr) {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID does not exist", "invalid value: counter_id")
+		return
+
+	}
+
+	// Load balancing logic
+	strategy := &loadbalancer.MetricsStrategy{}
+	lb := loadbalancer.NewLoadBalancer(counterShards, strategy, etcdManager)
+
+	// Marshal the request payload.
+	payload, err := json.Marshal(req)
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to marshal request payload", err.Error())
+		return
+	}
+	// Forward the request to the selected shard.
+	if err := lb.ForwardRequest(shardDecrementUrl, payload); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to forward request through load balancer", err.Error())
+		return
+	}
+
+	responsehandler.SendSuccessResponse(w, "Counter decremented successfully", nil)
 }
 
 func IncrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +235,35 @@ func IncrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
 		NewValue:  newValue,
 	}
 	responsehandler.SendSuccessResponse(w, "Counter incremented successfully", resp)
+
+}
+
+func DecrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve dependencies from context.
+	deps, err := middleware.GetDependenciesFromContext(r.Context())
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve dependencies", err.Error())
+		return
+	}
+	// Parse the request body.
+	var req IncrementCounterReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	// Validate input.
+	if req.CounterID == "" {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID is required", "Missing field: counter_id")
+		return
+	}
+	// call shard store to decrement in memory shard counter (upsert behaviour)
+	newValue := deps.CounterManager.Decrement(req.CounterID)
+	resp := ShardCounterResponse{
+		CounterID: req.CounterID,
+		NewValue:  newValue,
+	}
+	responsehandler.SendSuccessResponse(w, "Counter decremented successfully", resp)
 
 }
 

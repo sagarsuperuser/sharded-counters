@@ -75,6 +75,8 @@ func startAPI(deps *middleware.Dependencies) {
 	r.Handle("/counter/test", middleware.Middleware(deps, http.HandlerFunc(server.CreateCounterHandler))).Methods(http.MethodPost)
 	r.Handle("/counter/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementCounterHandler))).Methods(http.MethodPut)
 	r.Handle("/counter/shard/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementShardCounterHandler))).Methods(http.MethodPut)
+	r.Handle("/counter/decrement", middleware.Middleware(deps, http.HandlerFunc(server.DecrementCounterHandler))).Methods(http.MethodPut)
+	r.Handle("/counter/shard/decrement", middleware.Middleware(deps, http.HandlerFunc(server.DecrementShardCounterHandler))).Methods(http.MethodPut)
 
 	// Wrap the router with the middleware.
 	http.Handle("/", r)
