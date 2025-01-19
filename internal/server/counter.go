@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	countermetadata "sharded-counters/internal/counter_metadata"
@@ -31,7 +32,7 @@ type CounterResponse struct {
 
 type ShardCounterResponse struct {
 	CounterID string `json:"counter_id"`
-	NewValue  int64  `json:"new_value"`
+	Value     int64  `json:"value"`
 }
 
 const shardIncrementUrl = "counter/shard/increment"
@@ -151,7 +152,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Forward the request to the selected shard.
-	if err := lb.ForwardRequest(shardIncrementUrl, payload); err != nil {
+	if err := lb.ForwardRequest("PUT", shardIncrementUrl, payload, nil); err != nil {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to forward request through load balancer", err.Error())
 		return
 	}
@@ -185,7 +186,7 @@ func DecrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 	// Retrieve assigned shards (pods) for counter
 	counterShards, metadataErr := countermetadata.GetCounterMetadata(etcdManager, req.CounterID)
 	if etcd.IsKeyNotFound(metadataErr) {
-		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID does not exist", "invalid value: counter_id")
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID does not exist", "invalid value in counter_id")
 		return
 
 	}
@@ -201,7 +202,7 @@ func DecrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Forward the request to the selected shard.
-	if err := lb.ForwardRequest(shardDecrementUrl, payload); err != nil {
+	if err := lb.ForwardRequest("PUT", shardDecrementUrl, payload, nil); err != nil {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to forward request through load balancer", err.Error())
 		return
 	}
@@ -232,7 +233,7 @@ func IncrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
 	newValue := deps.CounterManager.Increment(req.CounterID)
 	resp := ShardCounterResponse{
 		CounterID: req.CounterID,
-		NewValue:  newValue,
+		Value:     newValue,
 	}
 	responsehandler.SendSuccessResponse(w, "Counter incremented successfully", resp)
 
@@ -261,9 +262,71 @@ func DecrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
 	newValue := deps.CounterManager.Decrement(req.CounterID)
 	resp := ShardCounterResponse{
 		CounterID: req.CounterID,
-		NewValue:  newValue,
+		Value:     newValue,
 	}
 	responsehandler.SendSuccessResponse(w, "Counter decremented successfully", resp)
+
+}
+
+func GetCounterHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve dependencies from context.
+	deps, err := middleware.GetDependenciesFromContext(r.Context())
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve dependencies", err.Error())
+		return
+	}
+
+	etcdManager := deps.EtcdManager
+
+	// Retrieve `counter_id` from query parameters.
+	counterID := r.URL.Query().Get("counter_id")
+	if counterID == "" {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID is required", "Missing query parameter: counter_id")
+		return
+	}
+
+	// Retrieve assigned shards (pods) for counter
+	counterShards, metadataErr := countermetadata.GetCounterMetadata(etcdManager, counterID)
+	if etcd.IsKeyNotFound(metadataErr) {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID does not exist", "invalid value in counter_id")
+		return
+
+	}
+
+	// Aggregate sum of counter values by querying each shard.
+	totalVal, err := aggregateCounterSum(counterID, counterShards, etcdManager)
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to aggregate sum", err.Error())
+		return
+	}
+	resp := ShardCounterResponse{
+		CounterID: counterID,
+		Value:     totalVal,
+	}
+
+	responsehandler.SendSuccessResponse(w, "Counter aggregated successfully", resp)
+}
+
+func GetShardCounterHandler(w http.ResponseWriter, r *http.Request) {
+	// Retrieve dependencies from context.
+	deps, err := middleware.GetDependenciesFromContext(r.Context())
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve dependencies", err.Error())
+		return
+	}
+	// Retrieve `counter_id` from query parameters.
+	counterID := r.URL.Query().Get("counter_id")
+	if counterID == "" {
+		responsehandler.SendErrorResponse(w, http.StatusBadRequest, "Counter ID is required", "Missing query parameter: counter_id")
+		return
+	}
+	// call shard store to get in memory  counter value.
+	newValue := deps.CounterManager.Get(counterID)
+	resp := ShardCounterResponse{
+		CounterID: counterID,
+		Value:     newValue,
+	}
+	responsehandler.SendSuccessResponse(w, "Counter Value fetched successfully", resp)
 
 }
 
@@ -271,4 +334,49 @@ func DecrementShardCounterHandler(w http.ResponseWriter, r *http.Request) {
 func assignShards(shards []*shardmetadata.Shard) []*shardmetadata.Shard {
 	// For simplicity, assign all shards (or select a random subset if needed).
 	return shards
+}
+
+func aggregateCounterSum(counterID string, counterShards []*shardmetadata.Shard, etcdManager *etcd.EtcdManager) (int64, error) {
+	lb := loadbalancer.NewLoadBalancer(counterShards, nil, etcdManager)
+	lb.FilterHealthyShards()
+	var total int64
+
+	for _, shardData := range lb.GetShards() {
+		// Send api request to each shard
+		qyeryParams := map[string]string{"counter_id": counterID}
+		respBody, statusCode, err := lb.ForwardRequestToShard("GET", shardData, "counter/shard", nil, qyeryParams)
+		// read the response body {"success":true,"message":"","data":{"counter_id":"12345abcdef6ii978","value":1}}
+		// Extract value and add it to total.
+		if err != nil {
+			return 0, fmt.Errorf("failed to query shard %s: %v (status Code: %d)", shardData.ShardID, err, statusCode)
+
+		}
+		response := &responsehandler.Response{}
+		if err := json.Unmarshal([]byte(respBody), response); err != nil {
+			return 0, fmt.Errorf("failed to parse response from shard %s: %v", shardData.ShardID, err)
+		}
+		// Check for API-level success.
+		if !response.Success {
+			return 0, fmt.Errorf("shard %s returned unsuccessful response for counter id %s", shardData.ShardID, counterID)
+		}
+
+		// Add the shard's counter value to the total.
+		// Cast response.Data to the expected structure.
+		dataMap, ok := response.Data.(map[string]interface{})
+		if !ok {
+			return 0, fmt.Errorf("invalid data format from shard %s", shardData.ShardID)
+		}
+
+		// Extract the counter value.
+		value, ok := dataMap["value"].(float64) // JSON numbers are unmarshaled as float64.
+		if !ok {
+			return 0, fmt.Errorf("invalid data format from shard %s", shardData.ShardID)
+		}
+		// Extract the counter value.
+		total += int64(value)
+
+	}
+
+	return total, nil
+
 }

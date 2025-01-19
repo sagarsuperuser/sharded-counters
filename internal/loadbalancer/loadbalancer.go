@@ -2,11 +2,12 @@ package loadbalancer
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
-	"sharded-counters/internal/utils"
 	"strings"
 )
 
@@ -42,9 +43,9 @@ func (lb *LoadBalancer) GetShards() []*shardmetadata.Shard {
 	return lb.shards
 }
 
-func (lb *LoadBalancer) ForwardRequest(urlPath string, payload []byte) error {
+func (lb *LoadBalancer) ForwardRequest(method string, urlPath string, payload []byte, queryParams map[string]string) error {
 	// Filter out healthy shards and set new shards, key => shards/<shard-id>
-	lb.filterHealthyShards()
+	lb.FilterHealthyShards()
 	// Select the shard based on selection strategy
 	selectedShard, err := lb.selectionStrategy.SelectShard(lb.GetShards())
 	if err != nil {
@@ -52,14 +53,14 @@ func (lb *LoadBalancer) ForwardRequest(urlPath string, payload []byte) error {
 	}
 
 	// Forward the request to the selected shard.
-	err = lb.forwardRequestToShard(selectedShard, urlPath, payload)
+	_, _, err = lb.ForwardRequestToShard(method, selectedShard, urlPath, payload, queryParams)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (lb *LoadBalancer) filterHealthyShards() error {
+func (lb *LoadBalancer) FilterHealthyShards() error {
 	var healthyShards []*shardmetadata.Shard
 	for _, shardData := range lb.GetShards() {
 		// fetch shard metrics from etcd
@@ -78,32 +79,73 @@ func (lb *LoadBalancer) filterHealthyShards() error {
 	return nil
 }
 
-func (lb *LoadBalancer) forwardRequestToShard(shard *shardmetadata.Shard, urlPath string, payload []byte) error {
-	// Construct the URL for the shard's API endpoint.
-	shardURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, urlPath)
+func (lb *LoadBalancer) ForwardRequestToShard(method string, shard *shardmetadata.Shard, urlPath string, payload []byte, queryParams map[string]string) (string, int, error) {
+	// Construct the base URL for the shard's API endpoint.
+	baseURL := fmt.Sprintf("http://%s:%s/%s", shard.ShardID, shardPort, urlPath)
 
-	// Send the request to the shard using PUT method.
-	req, err := http.NewRequest(http.MethodPut, shardURL, strings.NewReader(string(payload)))
+	// Parse the base URL to append query parameters.
+	urlObj, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("failed to create request for shard: %v", err)
+		return "", 0, fmt.Errorf("failed to parse URL: %v", err)
+	}
+
+	// Add query parameters if provided.
+	if queryParams != nil {
+		q := urlObj.Query()
+		for key, value := range queryParams {
+			q.Add(key, value)
+		}
+		urlObj.RawQuery = q.Encode()
+	}
+
+	// Prepare the request body (nil for GET requests).
+	var bodyReader io.Reader
+	if method != http.MethodGet && len(payload) > 0 {
+		bodyReader = strings.NewReader(string(payload))
+	}
+
+	// Create the HTTP request.
+	req, err := http.NewRequest(method, urlObj.String(), bodyReader)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create request for shard: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Log the request details.
+	logRequest(req, payload)
 
 	// Execute the request.
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to forward request to shard: %v", err)
+		return "", 0, fmt.Errorf("failed to forward request to shard: %v", err)
 	}
 	defer resp.Body.Close()
 
-	log.Printf("Request forwarded to shard %s with payload %s", shard.ShardID, payload)
-	utils.LogResponse(resp)
+	// Read the response body.
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read shard response body: %v", err)
+		return "", resp.StatusCode, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Log the response details.
+	logResponse(resp, responseBody)
 
 	// Check for non-2xx status codes.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("shard returned error status: %d", resp.StatusCode)
+		return string(responseBody), resp.StatusCode, fmt.Errorf("shard returned error status: %d", resp.StatusCode)
 	}
 
-	return nil
+	return string(responseBody), resp.StatusCode, nil
+}
+
+// logRequest logs the details of the outgoing HTTP request.
+func logRequest(req *http.Request, payload []byte) {
+	log.Printf("Request: Method=%s, URL=%s, Headers=%v, Payload=%s", req.Method, req.URL.String(), req.Header, string(payload))
+}
+
+// logResponse logs the response details from the shard API.
+func logResponse(resp *http.Response, body []byte) {
+	log.Printf("Response: Status Code=%d, Body=%s", resp.StatusCode, string(body))
 }
