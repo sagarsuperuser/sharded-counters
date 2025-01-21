@@ -72,12 +72,11 @@ func startAPI(deps *middleware.Dependencies) {
 
 	// Define routes and enforce HTTP methods.
 	r.Handle("/health", middleware.Middleware(deps, http.HandlerFunc(server.HealthHandler))).Methods(http.MethodGet)
-	r.Handle("/counter/test", middleware.Middleware(deps, http.HandlerFunc(server.CreateCounterHandler))).Methods(http.MethodPost)
+	r.Handle("/counter", middleware.Middleware(deps, http.HandlerFunc(server.CreateCounterHandler))).Methods(http.MethodPost)
 	r.Handle("/counter/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementCounterHandler))).Methods(http.MethodPut)
-	r.Handle("/counter/shard/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementShardCounterHandler))).Methods(http.MethodPut)
 	r.Handle("/counter/decrement", middleware.Middleware(deps, http.HandlerFunc(server.DecrementCounterHandler))).Methods(http.MethodPut)
+	r.Handle("/counter/shard/increment", middleware.Middleware(deps, http.HandlerFunc(server.IncrementShardCounterHandler))).Methods(http.MethodPut)
 	r.Handle("/counter/shard/decrement", middleware.Middleware(deps, http.HandlerFunc(server.DecrementShardCounterHandler))).Methods(http.MethodPut)
-
 	r.Handle("/counter", middleware.Middleware(deps, http.HandlerFunc(server.GetCounterHandler))).Methods(http.MethodGet)
 	r.Handle("/counter/shard", middleware.Middleware(deps, http.HandlerFunc(server.GetShardCounterHandler))).Methods(http.MethodGet)
 
