@@ -95,9 +95,9 @@ Contributions are welcome! Please fork the repository and submit a pull request.
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Future Enhancements
-
-1. **Enhanced Fault Tolerance with Replication:** Integrate robust replication mechanisms for each shard to ensure high availability and seamless recovery from failures.
-2. **Leader-Follower Architecture for Shards:** Adopt a leader-follower model primarily for fault tolerance, where the leader manages write operations, and followers act as hot standbys, ready to take over in case of leader failure.
-3. **Scheduled Data Synchronization Across Shards:** Implement periodic data replication schedules to maintain consistent data integrity and availability across shards.
-4. **Advanced Request Logging for Recovery:** Maintain detailed logs of all operations on the leader, enabling the replay of operations in case a follower needs to be promoted to a leader.
-5. **Efficient Aggregated Count Storage:** Regularly compute and persist aggregated counts across all shards in a scalable storage solution, like Cassandra, to optimize on get counter value queries.
+1. **gRPC-based Communication:** Replace traditional HTTP-based communication between the app and shards with gRPC for enhanced performance, lower latency, and efficient serialization.
+2. **Enhanced Fault Tolerance with Replication:** Integrate robust replication mechanisms for each shard to ensure high availability and seamless recovery from failures.
+3. **Leader-Follower Architecture for Shards:** Adopt a leader-follower model primarily for fault tolerance, where the leader manages write operations, and followers act as hot standbys, ready to take over in case of leader failure.
+4. **Scheduled Data Synchronization Across Shards:** Implement periodic data replication schedules to maintain consistent data integrity and availability across shards.
+5. **Advanced Request Logging for Recovery:** Maintain detailed logs of all operations on the leader, enabling the replay of operations in case a follower needs to be promoted to a leader.
+6. **Efficient Aggregated Count Storage:** Regularly compute and persist aggregated counts across all shards in a scalable storage solution, like Cassandra, to optimize on get counter value queries.
