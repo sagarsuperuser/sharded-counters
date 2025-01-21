@@ -17,15 +17,16 @@ In distributed systems, maintaining accurate counters under high concurrency can
 The system comprises the following components:
 
 1. **App Server:** Processes API requests for counter operations.
-2. **Service Registry (e.g., Etcd):** Maintains metadata about active shards and their mappings.
-3. **Shard Cluster:** Managed by Kubernetes, each pod handles a portion of the counter's data.
-4. **Persistent Storage (e.g., Cassandra):** Stores counter data for durability and recovery.
+2. **Load Balancer:** Distributes incoming requests across App Servers and selects shards based on a metrics-driven strategy (e.g., CPU utilization) to optimize resource usage and maintain system balance.
+3. **Service Registry (e.g., Etcd):** Maintains metadata about active shards and their mappings.
+4. **Shard Cluster:** Managed by Kubernetes, each pod handles a portion of the counter's data.
+5. **Persistent Storage (e.g., Cassandra):** Stores counter data for durability and recovery.
 
 ## Workflow
 
-1. **Counter Creation:** A new counter is initialized and distributed across a predefined number of shards.
-2. **Increment/Decrement Operations:** Incoming requests are routed to specific shards based on a metrics (cpu utilization) based selection statedy.
-3. **Read Operations:** To retrieve the total count, values from all shards are aggregated.
+1. **Counter Creation:** A new counter is initialized and distributed across a predefined number of shards. The Load Balancer determines the best shard for the counter based on metrics such as CPU utilization or shard availability.
+2. **Increment/Decrement Operations:** Incoming requests are routed to the Load Balancer, which identifies the optimal shard for the operation and forwards the request accordingly.
+3. **Read Operations:** The Load Balancer aggregates requests and queries the appropriate shards to retrieve values. The results are combined to compute the total counter value.
 
 ## Getting Started
 
@@ -95,6 +96,7 @@ Contributions are welcome! Please fork the repository and submit a pull request.
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Future Enhancements
+
 1. **gRPC-based Communication:** Replace traditional HTTP-based communication between the app and shards with gRPC for enhanced performance, lower latency, and efficient serialization.
 2. **Enhanced Fault Tolerance with Replication:** Integrate robust replication mechanisms for each shard to ensure high availability and seamless recovery from failures.
 3. **Leader-Follower Architecture for Shards:** Adopt a leader-follower model primarily for fault tolerance, where the leader manages write operations, and followers act as hot standbys, ready to take over in case of leader failure.
