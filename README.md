@@ -17,8 +17,8 @@ In distributed systems, maintaining accurate counters under high concurrency can
 The system comprises the following components:
 
 1. **App Server:** Processes API requests for counter operations.
-2. **Load Balancer:** Distributes incoming requests across App Servers and selects shards based on a metrics-driven strategy (e.g., CPU utilization) to optimize resource usage and maintain system balance.
-3. **Service Registry (e.g., Etcd):** Maintains metadata about active shards and their mappings.
+2. **Load Balancer:** Distributes requests across shards based on a metrics-driven strategy (e.g., CPU utilization) to optimize resource usage.
+3. **Service Registry (e.g., Etcd):** Maintains metadata about active shards and their counter to shard mappings.
 4. **Shard Cluster:** Managed by Kubernetes, each pod handles a portion of the counter's data.
 5. **Persistent Storage (e.g., Cassandra):** Stores counter data for durability and recovery.
 
