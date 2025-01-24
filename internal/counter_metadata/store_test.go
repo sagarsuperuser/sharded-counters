@@ -7,6 +7,7 @@ import (
 	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 	"testing"
+	"time"
 )
 
 // MockEtcdManager implements the etcd.Manager interface for testing
@@ -32,13 +33,11 @@ func (m *MockEtcdManager) SaveMetadata(key, value string) error {
 }
 
 func (m *MockEtcdManager) GetKeysWithPrefix(prefix string) ([]string, error) {
-	var keys []string
-	for k := range m.store {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			keys = append(keys, k)
-		}
-	}
-	return keys, nil
+	return nil, nil
+}
+
+func (m *MockEtcdManager) SaveMetadataWithLease(key, value string, ttl time.Duration) error {
+	return nil
 }
 
 // Mock GetAliveShards function

@@ -13,6 +13,7 @@ type Manager interface {
 	Get(key string) (string, error)
 	SaveMetadata(key, value string) error
 	GetKeysWithPrefix(prefix string) ([]string, error)
+	SaveMetadataWithLease(key, value string, ttl time.Duration) error
 }
 
 // EtcdManager manages interactions with the Etcd client.

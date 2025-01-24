@@ -20,7 +20,7 @@ type Shard struct {
 	UpdatedTime    string  `json:"updated_time"`
 }
 
-func fetchAndStoreMetrics(manager *etcd.EtcdManager, shardID string) error {
+func fetchAndStoreMetrics(manager etcd.Manager, shardID string) error {
 	utilizations, err := cpu.Percent(0, false)
 	if err != nil {
 		return fmt.Errorf("error fetching CPU utilization: %w", err)
@@ -53,7 +53,7 @@ func fetchAndStoreMetrics(manager *etcd.EtcdManager, shardID string) error {
 	return nil
 }
 
-func StoreMetrics(manager *etcd.EtcdManager, shardID string, interval time.Duration) {
+func StoreMetrics(manager etcd.Manager, shardID string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -90,7 +90,7 @@ func GetAliveShards(manager etcd.Manager) ([]*Shard, error) {
 	return healthyShards, nil
 }
 
-func GetShardMetrics(manager *etcd.EtcdManager, shardID string) (*Shard, error) {
+func GetShardMetrics(manager etcd.Manager, shardID string) (*Shard, error) {
 	// Construct the key for the shard in etcd.
 	key := fmt.Sprintf("%s/%s", shardPrefix, shardID)
 	// Retrieve shard metadata from etcd.

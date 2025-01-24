@@ -17,7 +17,7 @@ const shardPort = "8080"
 type LoadBalancer struct {
 	shards            []*shardmetadata.Shard
 	selectionStrategy SelectionStrategy
-	etcdClient        *etcd.EtcdManager
+	etcdClient        etcd.Manager
 }
 
 // SelectionStrategy defines the interface for shard selection strategies.
@@ -26,7 +26,7 @@ type SelectionStrategy interface {
 }
 
 // NewLoadBalancer creates and initializes a new LoadBalancer instance.
-func NewLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy, eClient *etcd.EtcdManager) *LoadBalancer {
+func NewLoadBalancer(shards []*shardmetadata.Shard, strategy SelectionStrategy, eClient etcd.Manager) *LoadBalancer {
 	return &LoadBalancer{
 		shards:            shards,
 		selectionStrategy: strategy,
