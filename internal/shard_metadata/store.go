@@ -68,7 +68,7 @@ func StoreMetrics(manager *etcd.EtcdManager, shardID string, interval time.Durat
 }
 
 // GetAliveShards retrieves all shard keys from etcd and returns list of shard objects.
-func GetAliveShards(manager *etcd.EtcdManager) ([]*Shard, error) {
+func GetAliveShards(manager etcd.Manager) ([]*Shard, error) {
 	// Retrieve key values with the specified prefix from etcd
 	keys, err := manager.GetKeysWithPrefix(shardPrefix)
 	if err != nil {

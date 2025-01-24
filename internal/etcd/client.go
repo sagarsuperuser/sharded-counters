@@ -9,6 +9,12 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+type Manager interface {
+	Get(key string) (string, error)
+	SaveMetadata(key, value string) error
+	GetKeysWithPrefix(prefix string) ([]string, error)
+}
+
 // EtcdManager manages interactions with the Etcd client.
 type EtcdManager struct {
 	client *clientv3.Client

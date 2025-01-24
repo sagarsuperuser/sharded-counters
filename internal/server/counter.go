@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	countermetadata "sharded-counters/internal/counter_metadata"
 	"sharded-counters/internal/etcd"
@@ -69,29 +68,16 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve available shards (pods) from Etcd.
-	shards, err := shardmetadata.GetAliveShards(etcdManager)
+	shardIds, err := countermetadata.LoadOrStore(etcdManager, counterID, shardmetadata.GetAliveShards)
 	if err != nil {
-		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve shards", err.Error())
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve CounterID", err.Error())
 		return
 	}
-
-	// Assign shards to the counter (randomly).
-	assignedShards := assignShards(shards)
-
-	// Save metadata to Etcd.
-	if err := countermetadata.SaveCounterMetadata(etcdManager, counterID, assignedShards); err != nil {
-		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to save metadata", err.Error())
-		return
-	}
-
-	shardIds := countermetadata.GetShardIds(assignedShards)
-	log.Printf("Stored counter metadata in etcd: %s = %s", counterID, shardIds)
 
 	// Respond with the assigned shards.
 	resp := CounterResponse{
 		CounterID: counterID,
-		Shards:    shardIds,
+		Shards:    countermetadata.GetShardIds(shardIds),
 	}
 	responsehandler.SendSuccessResponse(w, "Counter created successfully", resp)
 }
@@ -120,25 +106,10 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve assigned shards (pods) for counter
-	counterShards, metadataErr := countermetadata.GetCounterMetadata(etcdManager, req.CounterID)
-	if etcd.IsKeyNotFound(metadataErr) {
-		// Retrieve all available shards (pods) from Etcd.
-		allAliveShards, err := shardmetadata.GetAliveShards(etcdManager)
-		if err != nil {
-			responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to fetch shards metadata", err.Error())
-			return
-		}
-
-		// Assign shards to the counter.
-		counterShards = assignShards(allAliveShards)
-
-		// Save metadata to Etcd.
-		if err := countermetadata.SaveCounterMetadata(etcdManager, req.CounterID, counterShards); err != nil {
-			responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to save metadata", err.Error())
-			return
-		}
-		log.Printf("Stored counter metadata in etcd: %s = %s", req.CounterID, countermetadata.GetShardIds(counterShards))
+	counterShards, err := countermetadata.LoadOrStore(etcdManager, req.CounterID, shardmetadata.GetAliveShards)
+	if err != nil {
+		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve CounterID", err.Error())
+		return
 	}
 
 	// Load balancing logic
@@ -328,12 +299,6 @@ func GetShardCounterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	responsehandler.SendSuccessResponse(w, "Counter Value fetched successfully", resp)
 
-}
-
-// assignShards randomly selects shards for a counter.
-func assignShards(shards []*shardmetadata.Shard) []*shardmetadata.Shard {
-	// For simplicity, assign all shards (or select a random subset if needed).
-	return shards
 }
 
 func aggregateCounterSum(counterID string, counterShards []*shardmetadata.Shard, etcdManager *etcd.EtcdManager) (int64, error) {

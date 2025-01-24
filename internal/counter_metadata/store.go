@@ -3,20 +3,21 @@ package countermetadata
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
 )
 
-const counterPrefix = "counters" // Prefix used to identify counter keys in etcd
+const CounterPrefix = "counters" // Prefix used to identify counter keys in etcd
 
 // saveCounterMetadata saves counter metadata in Etcd.
-func SaveCounterMetadata(manager *etcd.EtcdManager, counterID string, shards []*shardmetadata.Shard) error {
+func SaveCounterMetadata(manager etcd.Manager, counterID string, shards []*shardmetadata.Shard) error {
 	shardIds := GetShardIds(shards)
 	data, err := json.Marshal(shardIds)
 	if err != nil {
 		return fmt.Errorf("failed to marshal shards: %v", err)
 	}
-	key := fmt.Sprintf("%s/%s", counterPrefix, counterID)
+	key := fmt.Sprintf("%s/%s", CounterPrefix, counterID)
 	err = manager.SaveMetadata(key, string(data))
 	if err != nil {
 		return fmt.Errorf("failed to store metadata in etcd: %v", err)
@@ -25,9 +26,9 @@ func SaveCounterMetadata(manager *etcd.EtcdManager, counterID string, shards []*
 }
 
 // getCounterMetadata retrieves counter metadata i.e. assigned shards from Etcd.
-func GetCounterMetadata(manager *etcd.EtcdManager, counterID string) ([]*shardmetadata.Shard, error) {
+func GetCounterMetadata(manager etcd.Manager, counterID string) ([]*shardmetadata.Shard, error) {
 	// Fetch the metadata from Etcd using the provided key
-	key := fmt.Sprintf("%s/%s", counterPrefix, counterID)
+	key := fmt.Sprintf("%s/%s", CounterPrefix, counterID)
 	data, err := manager.Get(key)
 	if err != nil {
 		return nil, err
@@ -42,6 +43,29 @@ func GetCounterMetadata(manager *etcd.EtcdManager, counterID string) ([]*shardme
 	shardsList := GetShardObjList(shards)
 	return shardsList, nil
 
+}
+
+func LoadOrStore(etcdManager etcd.Manager, counterID string, getAliveShards func(manager etcd.Manager) ([]*shardmetadata.Shard, error)) ([]*shardmetadata.Shard, error) {
+	// Retrieve assigned shards (pods) for counter
+	counterShards, metadataErr := GetCounterMetadata(etcdManager, counterID)
+	if etcd.IsKeyNotFound(metadataErr) {
+		// Retrieve all available shards (pods) from Etcd.
+		allAliveShards, err := getAliveShards(etcdManager)
+		if err != nil {
+			return nil, err
+		}
+
+		// Assign shards to the counter.
+		counterShards = assignShards(allAliveShards)
+
+		// Save metadata to Etcd.
+		if err := SaveCounterMetadata(etcdManager, counterID, counterShards); err != nil {
+			return nil, err
+		}
+		log.Printf("Stored counter metadata in etcd: %s = %s", counterID, GetShardIds(counterShards))
+	}
+
+	return counterShards, nil
 }
 
 func GetShardIds(shards []*shardmetadata.Shard) []string {
@@ -61,4 +85,10 @@ func GetShardObjList(shardIds []string) []*shardmetadata.Shard {
 		shardsList = append(shardsList, shardData)
 	}
 	return shardsList
+}
+
+// assignShards randomly selects shards for a counter.
+func assignShards(shards []*shardmetadata.Shard) []*shardmetadata.Shard {
+	// For simplicity, assign all shards (or select a random subset if needed).
+	return shards
 }
