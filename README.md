@@ -20,13 +20,13 @@ The system comprises the following components:
 2. **Load Balancer:** Distributes requests across shards based on a metrics-driven strategy (e.g., CPU utilization) to optimize resource usage.
 3. **Service Registry (e.g., Etcd):** Maintains metadata about active shards and their counter to shard mappings.
 4. **Shard Cluster:** Managed by Kubernetes, each pod handles a portion of the counter's data.
-5. **Persistent Storage (e.g., Cassandra):** Stores counter data for durability and recovery.
+5. **Persistent Storage (e.g., Cassandra):** Stores counter data for low latency read operations and durability.
 
 ## Workflow
 
-1. **Counter Creation:** A new counter is initialized and distributed across a predefined number of shards. The Load Balancer determines the best shard for the counter based on metrics such as CPU utilization or shard availability.
-2. **Increment/Decrement Operations:** Incoming requests are routed to the Load Balancer, which identifies the optimal shard for the operation and forwards the request accordingly.
-3. **Read Operations:** The Load Balancer aggregates requests and queries the appropriate shards to retrieve values. The results are combined to compute the total counter value.
+1. **Counter Creation:** A new counter is initialized and distributed across a predefined number of shards. 
+2. **Increment/Decrement Operations:** Incoming requests are routed to the Load Balancer, which identifies the optimal shard for the operation based on metrics such as CPU utilization  and forwards the request accordingly.
+3. **Read Operations:** Appropriate shards are queried to retrieve values. The results are combined to compute the total counter value.
 
 ## Getting Started
 
