@@ -45,12 +45,12 @@ func GetCounterMetadata(manager etcd.Manager, counterID string) ([]*shardmetadat
 
 }
 
-func LoadOrStore(etcdManager etcd.Manager, counterID string, getAliveShards func(manager etcd.Manager) ([]*shardmetadata.Shard, error)) ([]*shardmetadata.Shard, error) {
+func LoadOrStore(etcdManager etcd.Manager, counterID string) ([]*shardmetadata.Shard, error) {
 	// Retrieve assigned shards (pods) for counter
 	counterShards, metadataErr := GetCounterMetadata(etcdManager, counterID)
 	if etcd.IsKeyNotFound(metadataErr) {
 		// Retrieve all available shards (pods) from Etcd.
-		allAliveShards, err := getAliveShards(etcdManager)
+		allAliveShards, err := shardmetadata.GetAliveShards(etcdManager)
 		if err != nil {
 			return nil, err
 		}

@@ -20,7 +20,7 @@ type Shard struct {
 	UpdatedTime    string  `json:"updated_time"`
 }
 
-func fetchAndStoreMetrics(manager etcd.Manager, shardID string) error {
+func FetchAndStoreMetrics(manager etcd.Manager, shardID string) error {
 	utilizations, err := cpu.Percent(0, false)
 	if err != nil {
 		return fmt.Errorf("error fetching CPU utilization: %w", err)
@@ -60,7 +60,7 @@ func StoreMetrics(manager etcd.Manager, shardID string, interval time.Duration) 
 	for {
 		select {
 		case <-ticker.C:
-			if err := fetchAndStoreMetrics(manager, shardID); err != nil {
+			if err := FetchAndStoreMetrics(manager, shardID); err != nil {
 				log.Printf("Error during metrics storage: %v", err)
 			}
 		}

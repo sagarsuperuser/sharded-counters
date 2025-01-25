@@ -68,7 +68,7 @@ func CreateCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shardIds, err := countermetadata.LoadOrStore(etcdManager, counterID, shardmetadata.GetAliveShards)
+	shardIds, err := countermetadata.LoadOrStore(etcdManager, counterID)
 	if err != nil {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve CounterID", err.Error())
 		return
@@ -106,7 +106,7 @@ func IncrementCounterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	counterShards, err := countermetadata.LoadOrStore(etcdManager, req.CounterID, shardmetadata.GetAliveShards)
+	counterShards, err := countermetadata.LoadOrStore(etcdManager, req.CounterID)
 	if err != nil {
 		responsehandler.SendErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve CounterID", err.Error())
 		return

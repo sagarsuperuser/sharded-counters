@@ -1,8 +1,6 @@
 package countermetadata_test
 
 import (
-	"encoding/json"
-	"fmt"
 	countermetadata "sharded-counters/internal/counter_metadata"
 	"sharded-counters/internal/etcd"
 	shardmetadata "sharded-counters/internal/shard_metadata"
@@ -33,33 +31,41 @@ func (m *MockEtcdManager) SaveMetadata(key, value string) error {
 }
 
 func (m *MockEtcdManager) GetKeysWithPrefix(prefix string) ([]string, error) {
-	return nil, nil
+	var keys []string
+	for k := range m.store {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			keys = append(keys, k)
+		}
+	}
+	return keys, nil
 }
 
 func (m *MockEtcdManager) SaveMetadataWithLease(key, value string, ttl time.Duration) error {
+	m.store[key] = value
 	return nil
 }
 
 // Mock GetAliveShards function
-func MockGetAliveShards(manager etcd.Manager) ([]*shardmetadata.Shard, error) {
-	return []*shardmetadata.Shard{
-		{ShardID: "shard1"},
-		{ShardID: "shard2"},
-	}, nil
-}
+// func MockGetAliveShards(manager etcd.Manager) ([]*shardmetadata.Shard, error) {
+// 	return []*shardmetadata.Shard{
+// 		{ShardID: "shard1"},
+// 		{ShardID: "shard2"},
+// 	}, nil
+// }
 
 func TestLoadOrStore(t *testing.T) {
 	// Create a mock EtcdManager
 	mockEtcd := NewMockEtcdManager()
 
-	// Inject the mock function for GetAliveShards
-	getAliveShards := MockGetAliveShards
+	// Store shard metrics
+	shardmetadata.FetchAndStoreMetrics(mockEtcd, "shard1")
+	shardmetadata.FetchAndStoreMetrics(mockEtcd, "shard2")
 
 	// Test Case 1: No existing metadata
 	t.Run("No Existing Metadata", func(t *testing.T) {
 		counterID := "test-counter"
 
-		shards, err := countermetadata.LoadOrStore(mockEtcd, counterID, getAliveShards)
+		shards, err := countermetadata.LoadOrStore(mockEtcd, counterID)
 		if err != nil {
 			t.Fatalf("LoadOrStore failed: %v", err)
 		}
@@ -70,10 +76,10 @@ func TestLoadOrStore(t *testing.T) {
 		}
 
 		// Verify metadata was saved
-		key := fmt.Sprintf("%s/%s", countermetadata.CounterPrefix, counterID)
-		savedData, _ := mockEtcd.Get(key)
-		var savedShards []string
-		_ = json.Unmarshal([]byte(savedData), &savedShards)
+		savedShards, err := countermetadata.GetCounterMetadata(mockEtcd, counterID)
+		if err != nil {
+			t.Fatalf("GetCounterMetadata failed: %v", err)
+		}
 		if len(savedShards) != 2 {
 			t.Errorf("Expected 2 saved shards, got %d", len(savedShards))
 		}
@@ -83,13 +89,16 @@ func TestLoadOrStore(t *testing.T) {
 	t.Run("Existing Metadata", func(t *testing.T) {
 		counterID := "test-counter"
 
-		// Save initial metadata
-		initialShards := []string{"shard1", "shard2"}
-		data, _ := json.Marshal(initialShards)
-		key := fmt.Sprintf("%s/%s", countermetadata.CounterPrefix, counterID)
-		mockEtcd.SaveMetadata(key, string(data))
-
-		shards, err := countermetadata.LoadOrStore(mockEtcd, counterID, getAliveShards)
+		// Save initial counter metadata
+		initialShards := []*shardmetadata.Shard{
+			{ShardID: "shard1"},
+			{ShardID: "shard2"},
+		}
+		err := countermetadata.SaveCounterMetadata(mockEtcd, counterID, initialShards)
+		if err != nil {
+			t.Fatalf("SaveCounterMetadata failed: %v", err)
+		}
+		shards, err := countermetadata.LoadOrStore(mockEtcd, counterID)
 		if err != nil {
 			t.Fatalf("LoadOrStore failed: %v", err)
 		}
