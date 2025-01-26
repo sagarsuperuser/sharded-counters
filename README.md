@@ -104,10 +104,6 @@ The benchmarking tests were performed on the following local machine configurati
 
 ### Output Results
 
-We used [Apache Benchmark (ab)](https://httpd.apache.org/docs/2.4/programs/ab.html) to evaluate the performance of the Sharded Counters application. Apache Benchmark helps simulate concurrent HTTP requests to test throughput, latency, and scalability.
-
-### Output Results
-
 #### Increment API
 
 ```bash
