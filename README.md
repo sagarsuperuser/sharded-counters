@@ -1,6 +1,6 @@
 # Sharded Counters
 
-
+![Sharded Counter System](images/sharded-counter.png)
 
 ## Overview
 
