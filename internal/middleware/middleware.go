@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"sharded-counters/internal/etcd"
 	counter "sharded-counters/internal/shard_store"
 	"time"
@@ -20,7 +21,7 @@ type contextKey string
 
 const dependenciesKey contextKey = "dependencies"
 
-// Middleware wraps an HTTP handler to log requests and injects EtcdManager into context.
+// Middleware wraps an HTTP handler to log requests, inject dependencies, and recover from panics.
 func Middleware(deps *Dependencies, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -32,6 +33,15 @@ func Middleware(deps *Dependencies, next http.Handler) http.Handler {
 
 		// Create a response recorder to capture response details.
 		recorder := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Recover from any panic to prevent server crash
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("Recovered from panic: %v\nStack Trace:\n%s", err, debug.Stack())
+				http.Error(recorder, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+
 		next.ServeHTTP(recorder, r)
 
 		latency := time.Since(start)
